@@ -1,53 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-
-const reviewItems = [
-  {
-    id: 1,
-    japanese: "新しいメンバーの歓迎会を開きました",
-    english: "We had a welcome party for a new member.",
-    point: "welcome party = 歓迎会 / for a new member = 新しいメンバーのために",
-  },
-  {
-    id: 2,
-    japanese: "彼は毎朝ジョギングをしています",
-    english: "He goes jogging every morning.",
-    point: "go jogging = ジョギングする / every morning = 毎朝",
-  },
-  {
-    id: 3,
-    japanese: "このレポートは明日までに提出してください",
-    english: "Please submit this report by tomorrow.",
-    point: "submit = 提出する / by tomorrow = 明日までに",
-  },
-  {
-    id: 4,
-    japanese: "彼女はとても静かに話しました",
-    english: "She spoke very quietly.",
-    point: "speak quietly = 静かに話す / very = とても",
-  },
-  {
-    id: 5,
-    japanese: "私はそのニュースを昨日聞きました",
-    english: "I heard that news yesterday.",
-    point: "hear = 聞く / yesterday = 昨日",
-  },
-];
+import { useMemo, useState } from "react";
+import { getSampleSentences } from "@/data/sampleSentences";
 
 export default function ReviewPage() {
+  const reviewItems = useMemo(() => getSampleSentences(), []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
 
-  const isComplete = currentIndex >= reviewItems.length;
   const currentItem = reviewItems[currentIndex];
-  const progressPercent = ((currentIndex + 1) / reviewItems.length) * 100;
+  const progressPercent = reviewItems.length > 0 ? ((currentIndex + 1) / reviewItems.length) * 100 : 0;
   const remainingCount = reviewItems.length - (currentIndex + 1);
 
   const handleNext = () => {
     setShowAnswer(false);
-    setCurrentIndex((prev) => prev + 1);
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex >= reviewItems.length) {
+      setIsComplete(true);
+      return;
+    }
+
+    setCurrentIndex(nextIndex);
+  };
+
+  const handleRestart = () => {
+    setCurrentIndex(0);
+    setShowAnswer(false);
+    setIsComplete(false);
   };
 
   if (isComplete) {
@@ -67,10 +49,7 @@ export default function ReviewPage() {
             </Link>
             <button
               type="button"
-              onClick={() => {
-                setCurrentIndex(0);
-                setShowAnswer(false);
-              }}
+              onClick={handleRestart}
               className="inline-flex h-12 items-center justify-center rounded-3xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
             >
               Reviewをもう一度行う
@@ -117,6 +96,15 @@ export default function ReviewPage() {
           <div className="space-y-6">
             <div className="rounded-[24px] bg-slate-50 p-6 shadow-sm shadow-slate-200/80">
               <div className="space-y-5 text-center">
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-white">
+                    Category: {currentItem.category}
+                  </span>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                    Difficulty: {currentItem.difficulty}
+                  </span>
+                </div>
+
                 <div className="space-y-2">
                   <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Japanese</p>
                   <p className="text-2xl font-semibold leading-relaxed text-slate-900 sm:text-[1.7rem]">
