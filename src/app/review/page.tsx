@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSampleSentences } from "@/data/sampleSentences";
 
 export default function ReviewPage() {
@@ -9,10 +9,28 @@ export default function ReviewPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState("");
+  const speechRequestIdRef = useRef(0);
 
   const currentItem = reviewItems[currentIndex];
   const progressPercent = reviewItems.length > 0 ? ((currentIndex + 1) / reviewItems.length) * 100 : 0;
   const remainingCount = reviewItems.length - (currentIndex + 1);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setSpeechError("");
+    speechRequestIdRef.current += 1;
+
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [currentIndex]);
 
   const handleNext = () => {
     setShowAnswer(false);
@@ -26,10 +44,61 @@ export default function ReviewPage() {
     setCurrentIndex(nextIndex);
   };
 
+  const handleShowAnswer = () => {
+    setShowAnswer(true);
+    window.setTimeout(() => {
+      handleSpeak();
+    }, 0);
+  };
+
   const handleRestart = () => {
     setCurrentIndex(0);
     setShowAnswer(false);
     setIsComplete(false);
+  };
+
+  const handleSpeak = () => {
+    if (
+      typeof window === "undefined" ||
+      !("speechSynthesis" in window) ||
+      typeof window.SpeechSynthesisUtterance === "undefined"
+    ) {
+      setSpeechError("This browser does not support speech.");
+      return;
+    }
+
+    const speechSynthesis = window.speechSynthesis;
+
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+    }
+
+    const requestId = ++speechRequestIdRef.current;
+    const utterance = new SpeechSynthesisUtterance(currentItem.english);
+
+    utterance.lang = "en-US";
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onstart = () => {
+      if (speechRequestIdRef.current === requestId) {
+        setIsSpeaking(true);
+        setSpeechError("");
+      }
+    };
+    utterance.onend = () => {
+      if (speechRequestIdRef.current === requestId) {
+        setIsSpeaking(false);
+      }
+    };
+    utterance.onerror = () => {
+      if (speechRequestIdRef.current === requestId) {
+        setIsSpeaking(false);
+        setSpeechError("This browser does not support speech.");
+      }
+    };
+
+    speechSynthesis.speak(utterance);
   };
 
   if (isComplete) {
@@ -120,12 +189,18 @@ export default function ReviewPage() {
                       </p>
                       <button
                         type="button"
+                        onClick={handleSpeak}
                         className="rounded-full bg-slate-100 p-2 text-slate-700 transition hover:bg-slate-200"
                         aria-label="Play pronunciation"
                       >
-                        🔊
+                        {isSpeaking ? "🔊 Speaking..." : "🔊"}
                       </button>
                     </div>
+                    {speechError ? (
+                      <p className="mt-3 text-sm font-medium text-rose-600">{speechError}</p>
+                    ) : isSpeaking ? (
+                      <p className="mt-3 text-sm font-medium text-slate-500">🔊 Speaking...</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -158,7 +233,7 @@ export default function ReviewPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => setShowAnswer(true)}
+                onClick={handleShowAnswer}
                 className="inline-flex h-14 w-full items-center justify-center rounded-3xl bg-slate-900 text-base font-semibold text-white transition hover:bg-slate-800"
               >
                 Show Answer
