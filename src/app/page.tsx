@@ -1,43 +1,101 @@
-import React from "react";
 import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
-      <div className="max-w-xl w-full text-center">
-        <h1 className="text-4xl font-bold mb-4">EnglishCoach</h1>
-        <p className="text-gray-700 mb-8">
-          「知っている英語」を「使える英語」に変える。AIとの英会話とSRS復習で、英語を定着させる学習アプリです。
-        </p>
+    <main className="min-h-screen bg-slate-50 text-slate-900 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl">
+        <section className="mb-8 rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+          <div className="max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Welcome to EnglishCoach
+            </p>
+            <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+              毎日少しずつ英語を身につけよう！
+            </h1>
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Link
-            href="/chat"
-            className="block bg-white shadow rounded-lg py-4 px-6 text-lg font-medium hover:bg-gray-100"
-          >
-            💬 英会話を始める
-          </Link>
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="space-y-6">
+            <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    学習サマリー
+                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-slate-900">Today&apos;s Review</h2>
+                </div>
+                <div className="rounded-3xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                  12
+                </div>
+              </div>
 
-          <Link
-            href="/library"
-            className="block bg-white shadow rounded-lg py-4 px-6 text-lg font-medium hover:bg-gray-100"
-          >
-            📚 フレーズ一覧
-          </Link>
+              <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                <div className="rounded-3xl bg-slate-50 p-4 text-center">
+                  <p className="text-sm text-slate-500">Learned Words</p>
+                  <p className="mt-3 text-xl font-semibold text-slate-900">156</p>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4 text-center sm:col-span-2">
+                  <p className="text-sm text-slate-500">Study Streak</p>
+                  <p className="mt-3 text-xl font-semibold text-slate-900">7 days</p>
+                </div>
+              </div>
+            </section>
 
-          <Link
-            href="/review"
-            className="block bg-white shadow rounded-lg py-4 px-6 text-lg font-medium hover:bg-gray-100"
-          >
-            🔁 今日の復習
-          </Link>
+            <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+                クイックアクション
+              </p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                <Link
+                  href="/chat"
+                  className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                >
+                  Start Chat
+                </Link>
+                <Link
+                  href="/review"
+                  className="inline-flex items-center justify-center rounded-3xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                >
+                  Review Words
+                </Link>
+                <Link
+                  href="/library"
+                  className="inline-flex items-center justify-center rounded-3xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                >
+                  Open Library
+                </Link>
+              </div>
+            </section>
+          </div>
 
-          <Link
-            href="/settings"
-            className="block bg-white shadow rounded-lg py-4 px-6 text-lg font-medium hover:bg-gray-100"
-          >
-            ⚙️ 設定
-          </Link>
+          <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">今日の目標</p>
+                <h2 className="mt-3 text-2xl font-semibold text-slate-900">Goal：20 words</h2>
+              </div>
+              <div className="rounded-3xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                Progress
+              </div>
+            </div>
+
+            <div className="mt-8 space-y-4">
+              <div className="rounded-3xl bg-slate-50 p-4">
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>12 / 20</span>
+                  <span className="font-semibold text-slate-900">60%</span>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full w-3/5 rounded-full bg-slate-900 transition-all duration-300" />
+                </div>
+              </div>
+
+              <p className="text-sm leading-relaxed text-slate-600">
+                今日の目標に向けて進めよう。英単語を増やせば、チャットと復習がもっと楽しくなります。
+              </p>
+            </div>
+          </section>
         </div>
       </div>
     </main>
