@@ -1,0 +1,19 @@
+{
+  "root": true,
+  "extends": [
+    "next/core-web-vitals",
+    "plugin:@typescript-eslint/recommended",
+    "eslint:recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {},
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx"],
+      "parserOptions": {
+        "project": "./tsconfig.json"
+      }
+    }
+  ]
+}
