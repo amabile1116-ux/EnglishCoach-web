@@ -1,6 +1,6 @@
 import React from "react";
-import Header from "@/components/Header";
-import BottomNav from "@/components/BottomNav";
+import Header from "./Header";
+import BottomNav from "./BottomNav";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,5 +1,5 @@
-import { sampleSentences } from "@/data/sampleSentences";
-import type { Sentence } from "@/types/sentence";
+import { sampleSentences } from "../data/sampleSentences";
+import type { Sentence } from "../types/sentence";
 
 const STORAGE_KEY = "english-coach-library-sentences";
 

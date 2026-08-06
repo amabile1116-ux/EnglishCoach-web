@@ -8,9 +8,9 @@ import {
   getLibrarySentences,
   updateLibrarySentence,
   type LibrarySentenceInput,
-} from "@/lib/librarySentences";
-import { getStudyHistory } from "@/lib/studyHistory";
-import type { Sentence } from "@/types/sentence";
+} from "../../lib/librarySentences";
+import { getStudyHistory } from "../../lib/studyHistory";
+import type { Sentence } from "../../types/sentence";
 
 type CategoryFilter = string;
 

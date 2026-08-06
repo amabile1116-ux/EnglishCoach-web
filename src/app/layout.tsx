@@ -1,6 +1,6 @@
 import "../styles/globals.css";
 import React from "react";
-import MainLayout from "@/components/MainLayout";
+import MainLayout from "../components/MainLayout";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

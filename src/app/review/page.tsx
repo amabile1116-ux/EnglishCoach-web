@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { sampleSentences } from "@/data/sampleSentences";
-import { getLibrarySentences } from "@/lib/librarySentences";
-import { recordReviewAction } from "@/lib/studyHistory";
-import type { Sentence } from "@/types/sentence";
+import { sampleSentences } from "../../data/sampleSentences";
+import { getLibrarySentences } from "../../lib/librarySentences";
+import { recordReviewAction } from "../../lib/studyHistory";
+import type { Sentence } from "../../types/sentence";
 
 export default function ReviewPage() {
   const [reviewItems, setReviewItems] = useState<Sentence[]>(sampleSentences);

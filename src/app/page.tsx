@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getStudyHistory, getStudyStreak, getTodaysReviewCount, type StudyHistory } from "@/lib/studyHistory";
+import { getStudyHistory, getStudyStreak, getTodaysReviewCount, type StudyHistory } from "../lib/studyHistory";
 
 export default function Home() {
   const [history, setHistory] = useState<StudyHistory>({

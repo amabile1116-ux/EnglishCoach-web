@@ -1,4 +1,4 @@
-import type { Sentence } from "@/types/sentence";
+import type { Sentence } from "../types/sentence";
 
 export const sampleSentences: Sentence[] = [
   {
