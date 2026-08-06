@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSampleSentences } from "@/data/sampleSentences";
+import { recordReviewAction } from "@/lib/studyHistory";
 
 export default function ReviewPage() {
   const reviewItems = useMemo(() => getSampleSentences(), []);
@@ -42,6 +43,11 @@ export default function ReviewPage() {
     }
 
     setCurrentIndex(nextIndex);
+  };
+
+  const handleReviewAction = (action: "again" | "gotIt") => {
+    recordReviewAction(currentItem.id, action);
+    handleNext();
   };
 
   const handleShowAnswer = () => {
@@ -216,14 +222,14 @@ export default function ReviewPage() {
                 <div className="grid grid-cols-2 gap-4 pt-2">
                   <button
                     type="button"
-                    onClick={handleNext}
+                    onClick={() => handleReviewAction("again")}
                     className="inline-flex h-14 items-center justify-center rounded-3xl border border-slate-200 bg-white text-base font-semibold text-slate-900 transition hover:bg-slate-50"
                   >
                     Again
                   </button>
                   <button
                     type="button"
-                    onClick={handleNext}
+                    onClick={() => handleReviewAction("gotIt")}
                     className="inline-flex h-14 items-center justify-center rounded-3xl bg-slate-900 text-base font-semibold text-white transition hover:bg-slate-800"
                   >
                     Got it!

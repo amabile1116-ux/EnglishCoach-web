@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { sampleSentences } from "@/data/sampleSentences";
+import { getStudyHistory } from "@/lib/studyHistory";
 
 type CategoryFilter = "All" | "Business" | "Daily" | "Travel";
 
@@ -12,6 +13,12 @@ export default function LibraryPage() {
   const sentences = sampleSentences;
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("All");
+  const [learnedSentenceIds, setLearnedSentenceIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const history = getStudyHistory();
+    setLearnedSentenceIds(history.learnedSentenceIds);
+  }, []);
 
   const filteredSentences = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -87,38 +94,47 @@ export default function LibraryPage() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredSentences.map((sentence) => (
-                <Link
-                  key={sentence.id}
-                  href="/review"
-                  className="group block rounded-[24px] bg-white p-5 shadow-lg shadow-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-slate-300/70"
-                >
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white">
-                      {sentence.category}
-                    </span>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                      {sentence.difficulty}
-                    </span>
-                  </div>
+              {filteredSentences.map((sentence) => {
+                const isLearned = learnedSentenceIds.includes(sentence.id);
 
-                  <div className="mt-4 space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Japanese</p>
-                      <p className="mt-1 text-base font-semibold leading-relaxed text-slate-900">{sentence.japanese}</p>
+                return (
+                  <Link
+                    key={sentence.id}
+                    href="/review"
+                    className="group block rounded-[24px] bg-white p-5 shadow-lg shadow-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-slate-300/70"
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white">
+                        {sentence.category}
+                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                        {sentence.difficulty}
+                      </span>
+                      {isLearned ? (
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                          ✅ Learned
+                        </span>
+                      ) : null}
                     </div>
 
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">English</p>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-700">{sentence.english}</p>
-                    </div>
-                  </div>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Japanese</p>
+                        <p className="mt-1 text-base font-semibold leading-relaxed text-slate-900">{sentence.japanese}</p>
+                      </div>
 
-                  <p className="mt-4 text-sm font-semibold text-slate-600 transition group-hover:text-slate-900">
-                    タップしてReviewへ →
-                  </p>
-                </Link>
-              ))}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">English</p>
+                        <p className="mt-1 text-sm leading-relaxed text-slate-700">{sentence.english}</p>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm font-semibold text-slate-600 transition group-hover:text-slate-900">
+                      タップしてReviewへ →
+                    </p>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </section>
