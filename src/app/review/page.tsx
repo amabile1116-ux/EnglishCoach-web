@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getSampleSentences } from "@/data/sampleSentences";
+import { useEffect, useRef, useState } from "react";
+import { sampleSentences } from "@/data/sampleSentences";
+import { getLibrarySentences } from "@/lib/librarySentences";
 import { recordReviewAction } from "@/lib/studyHistory";
+import type { Sentence } from "@/types/sentence";
 
 export default function ReviewPage() {
-  const reviewItems = useMemo(() => getSampleSentences(), []);
+  const [reviewItems, setReviewItems] = useState<Sentence[]>(sampleSentences);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -14,7 +16,16 @@ export default function ReviewPage() {
   const [speechError, setSpeechError] = useState("");
   const speechRequestIdRef = useRef(0);
 
+  useEffect(() => {
+    const nextItems = getLibrarySentences();
+    setReviewItems(nextItems);
+    setCurrentIndex(0);
+    setShowAnswer(false);
+    setIsComplete(false);
+  }, []);
+
   const currentItem = reviewItems[currentIndex];
+  const hasReviewItems = reviewItems.length > 0;
   const progressPercent = reviewItems.length > 0 ? ((currentIndex + 1) / reviewItems.length) * 100 : 0;
   const remainingCount = reviewItems.length - (currentIndex + 1);
 
@@ -32,6 +43,29 @@ export default function ReviewPage() {
       window.speechSynthesis.cancel();
     };
   }, [currentIndex]);
+
+  if (!hasReviewItems) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-xl flex-col items-center rounded-[28px] bg-white p-8 text-center shadow-lg shadow-slate-200/80 sm:p-10">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Review</p>
+          <h1 className="mt-4 text-3xl font-bold text-slate-900">例文がまだありません</h1>
+          <p className="mt-3 text-base leading-relaxed text-slate-600">
+            Library で例文を追加すると、ここで復習できます。
+          </p>
+
+          <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row">
+            <Link
+              href="/library"
+              className="inline-flex h-12 items-center justify-center rounded-3xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Libraryへ戻る
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   const handleNext = () => {
     setShowAnswer(false);
@@ -202,6 +236,11 @@ export default function ReviewPage() {
                         {isSpeaking ? "🔊 Speaking..." : "🔊"}
                       </button>
                     </div>
+                    {currentItem.point.trim().length > 0 ? (
+                      <p className="mt-4 text-sm leading-relaxed text-slate-600">{currentItem.point}</p>
+                    ) : (
+                      <p className="mt-4 text-sm leading-relaxed text-slate-500">Point is not set yet.</p>
+                    )}
                     {speechError ? (
                       <p className="mt-3 text-sm font-medium text-rose-600">{speechError}</p>
                     ) : isSpeaking ? (
