@@ -13,6 +13,8 @@ type Message = {
 
 const STORAGE_KEY = "englishcoach-chat-history-v1";
 const DEFAULT_TOPIC = "Introducing yourself";
+const ERROR_MESSAGE = "Sorry, something went wrong.";
+const THINKING_MESSAGE = "Thinking...";
 
 function createMessage(role: MessageRole, content: string): Message {
   return {
@@ -26,6 +28,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -61,20 +64,72 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const trimmedInput = input.trim();
-    if (!trimmedInput) {
+    if (!trimmedInput || isSending) {
       return;
     }
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      createMessage("user", trimmedInput),
-      createMessage("ai", "Let's practice together!"),
-    ]);
+    const userMessage = createMessage("user", trimmedInput);
+    const nextMessages = [...messages, userMessage];
+
+    setMessages(nextMessages);
     setInput("");
+
+    try {
+      setIsSending(true);
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: nextMessages.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to fetch AI response";
+
+        try {
+          const errorData = (await response.json()) as { error?: string };
+          if (typeof errorData.error === "string" && errorData.error.trim()) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // Fall back to a generic message when response body is not JSON.
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const data = (await response.json()) as { reply?: string };
+      const reply = data.reply?.trim();
+
+      if (!reply) {
+        throw new Error("Empty AI response");
+      }
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        createMessage("ai", reply),
+      ]);
+    } catch (error) {
+      console.error("[chat] Failed to get AI response", error);
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        createMessage("ai", ERROR_MESSAGE),
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleClearChat = () => {
@@ -120,7 +175,7 @@ export default function ChatPage() {
           <div className="space-y-4">
             {messages.length === 0 ? (
               <div className="mx-auto max-w-xl rounded-3xl border border-dashed border-slate-300 bg-white/80 px-5 py-10 text-center text-slate-500 shadow-sm backdrop-blur-sm">
-                まずは英語で話しかけてください。送信するとダミーの AI 応答が追加されます。
+                まずは英語で話しかけてください。AIコーチが返信します。
               </div>
             ) : null}
 
@@ -149,6 +204,20 @@ export default function ChatPage() {
                 </div>
               );
             })}
+
+            {isSending ? (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-3xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm sm:max-w-[70%]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    AI
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
+                    {THINKING_MESSAGE}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             <div ref={bottomRef} />
           </div>
         </div>
@@ -171,7 +240,7 @@ export default function ChatPage() {
             />
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || isSending}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Send className="h-4 w-4" />
