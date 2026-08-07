@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Mic, Send, Trash2 } from "lucide-react";
+import { Mic, Send, Speaker, Trash2 } from "lucide-react";
 
 type MessageRole = "user" | "ai";
 
@@ -15,8 +15,10 @@ const STORAGE_KEY = "englishcoach-chat-history-v1";
 const DEFAULT_TOPIC = "Introducing yourself";
 const ERROR_MESSAGE = "Sorry, something went wrong.";
 const THINKING_MESSAGE = "Thinking...";
+const SPEAKING_MESSAGE = "🔊 Speaking...";
 const UNSUPPORTED_SPEECH_MESSAGE =
   "This browser does not support speech recognition.";
+const UNSUPPORTED_TTS_MESSAGE = "This browser does not support speech.";
 
 type SpeechRecognitionResultAlternativeLike = {
   transcript: string;
@@ -64,8 +66,11 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeechSynthesisSupported, setIsSpeechSynthesisSupported] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechSynthesisRef = useRef<SpeechSynthesis | null>(null);
 
   useEffect(() => {
     try {
@@ -99,6 +104,26 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const speechSynthesis = window.speechSynthesis;
+    if (!speechSynthesis) {
+      setIsSpeechSynthesisSupported(false);
+      return;
+    }
+
+    speechSynthesisRef.current = speechSynthesis;
+    setIsSpeechSynthesisSupported(true);
+
+    return () => {
+      speechSynthesis.cancel();
+      speechSynthesisRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const speechWindow = window as WindowWithSpeechRecognition;
@@ -182,10 +207,10 @@ export default function ChatPage() {
         throw new Error("Empty AI response");
       }
 
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        createMessage("ai", reply),
-      ]);
+      const nextAiMessage = createMessage("ai", reply);
+
+      setMessages((currentMessages) => [...currentMessages, nextAiMessage]);
+      speakEnglishOnly(reply);
     } catch {
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -205,6 +230,49 @@ export default function ChatPage() {
 
     setMessages([]);
     window.localStorage.removeItem(STORAGE_KEY);
+  };
+
+  const speakEnglishOnly = (content: string) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!window.speechSynthesis || !isSpeechSynthesisSupported) {
+      setIsSpeechSynthesisSupported(false);
+      return;
+    }
+
+    const englishText = content
+      .split(/\n/)
+      .map((line) => line.trim())
+      .filter((line) => !line.startsWith("（") && !line.startsWith("(") && line.length > 0)
+      .join(" ");
+
+    if (!englishText) {
+      return;
+    }
+
+    const speechUtterance = new SpeechSynthesisUtterance(englishText);
+    speechUtterance.lang = "en-US";
+    speechUtterance.rate = 0.9;
+    speechUtterance.pitch = 1;
+    speechUtterance.volume = 1;
+
+    window.speechSynthesis.cancel();
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(speechUtterance);
+
+    speechUtterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    speechUtterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+  };
+
+  const handleReplayMessage = (content: string) => {
+    speakEnglishOnly(content);
   };
 
   const handleStartListening = () => {
@@ -264,6 +332,7 @@ export default function ChatPage() {
 
             {messages.map((message) => {
               const isUserMessage = message.role === "user";
+              const isAiMessage = message.role === "ai";
 
               return (
                 <div
@@ -277,9 +346,21 @@ export default function ChatPage() {
                         : "rounded-bl-md border border-slate-200 bg-white text-slate-900"
                     }`}
                   >
-                    <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${isUserMessage ? "text-emerald-100" : "text-slate-400"}`}>
-                      {isUserMessage ? "You" : "AI"}
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${isUserMessage ? "text-emerald-100" : "text-slate-400"}`}>
+                        {isUserMessage ? "You" : "AI"}
+                      </p>
+                      {isAiMessage ? (
+                        <button
+                          type="button"
+                          onClick={() => handleReplayMessage(message.content)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
+                          aria-label="Replay AI message"
+                        >
+                          <Speaker className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                     <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
                       {isUserMessage ? message.content : `"${message.content}"`}
                     </p>
@@ -296,6 +377,19 @@ export default function ChatPage() {
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
                     {THINKING_MESSAGE}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {isSpeaking ? (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-3xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm sm:max-w-[70%]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    AI
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
+                    {SPEAKING_MESSAGE}
                   </p>
                 </div>
               </div>
@@ -350,6 +444,10 @@ export default function ChatPage() {
 
           {!isSpeechSupported ? (
             <p className="mt-2 text-sm text-rose-600">{UNSUPPORTED_SPEECH_MESSAGE}</p>
+          ) : null}
+
+          {!isSpeechSynthesisSupported ? (
+            <p className="mt-2 text-sm text-rose-600">{UNSUPPORTED_TTS_MESSAGE}</p>
           ) : null}
         </form>
       </section>
