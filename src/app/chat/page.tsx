@@ -2,6 +2,11 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Mic, Send, Speaker, Square, Trash2 } from "lucide-react";
+import {
+  DEFAULT_DIFFICULTY,
+  readDifficultyFromStorage,
+  type DifficultyLevel,
+} from "../../lib/difficulty";
 
 type MessageRole = "user" | "ai";
 
@@ -65,6 +70,7 @@ function createMessage(role: MessageRole, content: string): Message {
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY);
   const [input, setInput] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -98,6 +104,10 @@ export default function ChatPage() {
       recognitionRef.current?.stop();
     }, SILENCE_TIMEOUT_MS);
   };
+
+  useEffect(() => {
+    setDifficulty(readDifficultyFromStorage());
+  }, []);
 
   useEffect(() => {
     try {
@@ -277,6 +287,7 @@ export default function ChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          difficulty,
           messages: nextMessages.map((message) => ({
             role: message.role,
             content: message.content,

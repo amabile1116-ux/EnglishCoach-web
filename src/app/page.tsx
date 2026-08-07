@@ -3,8 +3,19 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getStudyHistory, getStudyStreak, getTodaysReviewCount, type StudyHistory } from "../lib/studyHistory";
+import {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTY_LEVELS,
+  getDifficultyDescriptionLines,
+  getDifficultyIndex,
+  readDifficultyFromStorage,
+  saveDifficultyToStorage,
+  stepDifficulty,
+  type DifficultyLevel,
+} from "../lib/difficulty";
 
 export default function Home() {
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY);
   const [history, setHistory] = useState<StudyHistory>({
     learnedSentenceIds: [],
     againCount: 0,
@@ -13,12 +24,25 @@ export default function Home() {
   });
 
   useEffect(() => {
+    setDifficulty(readDifficultyFromStorage());
     setHistory(getStudyHistory());
   }, []);
 
   const learnedSentences = history.learnedSentenceIds.length;
   const todaysReviews = useMemo(() => getTodaysReviewCount(history), [history]);
   const studyStreak = useMemo(() => getStudyStreak(history), [history]);
+  const difficultyDescriptionLines = useMemo(
+    () => getDifficultyDescriptionLines(difficulty),
+    [difficulty],
+  );
+  const canGoEasier = getDifficultyIndex(difficulty) > 0;
+  const canGoHarder = getDifficultyIndex(difficulty) < DIFFICULTY_LEVELS.length - 1;
+
+  const handleDifficultyChange = (direction: "easier" | "harder") => {
+    const nextDifficulty = stepDifficulty(difficulty, direction);
+    setDifficulty(nextDifficulty);
+    saveDifficultyToStorage(nextDifficulty);
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 px-4 py-8 sm:px-6 lg:px-8">
@@ -36,6 +60,63 @@ export default function Home() {
 
         <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
           <div className="space-y-6">
+            <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Today&apos;s Focus
+              </p>
+              <ul className="mt-5 space-y-3 text-slate-800">
+                <li className="rounded-2xl bg-slate-50 px-4 py-3 font-medium">Business Meeting</li>
+                <li className="rounded-2xl bg-slate-50 px-4 py-3 font-medium">Small Talk</li>
+              </ul>
+            </section>
+
+            <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+                This Week
+              </p>
+              <ul className="mt-5 space-y-2 text-slate-800">
+                <li className="text-base">✓ Hotel</li>
+                <li className="text-base">✓ Restaurant</li>
+                <li className="text-base">□ Taxi</li>
+                <li className="text-base">□ Presentation</li>
+                <li className="text-base">□ Business Meeting</li>
+              </ul>
+            </section>
+
+            <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Difficulty
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-slate-900">{difficulty}</h2>
+
+              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                {difficultyDescriptionLines.map((line) => (
+                  <p key={line} className="text-sm leading-7 text-slate-700">
+                    {line}
+                  </p>
+                ))}
+              </div>
+
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleDifficultyChange("easier")}
+                  disabled={!canGoEasier}
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ← Easier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDifficultyChange("harder")}
+                  disabled={!canGoHarder}
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Harder →
+                </button>
+              </div>
+            </section>
+
             <section className="rounded-[28px] bg-white p-6 shadow-lg shadow-slate-200/80 sm:p-8">
               <div className="flex items-center justify-between">
                 <div>

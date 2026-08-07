@@ -1,5 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import {
+  DEFAULT_DIFFICULTY,
+  getDifficultySystemInstruction,
+  isDifficultyLevel,
+} from "../../../lib/difficulty";
 
 type ChatRole = "user" | "ai";
 
@@ -10,6 +15,7 @@ type ChatMessage = {
 
 type ChatRequestBody = {
   messages?: ChatMessage[];
+  difficulty?: string;
 };
 
 const SYSTEM_PROMPT = `You are EnglishCoach, an AI conversation partner and English coach.
@@ -214,6 +220,9 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ChatRequestBody;
     const rawMessages = Array.isArray(body.messages) ? body.messages : [];
     const messages = rawMessages.filter(isValidMessage);
+    const difficulty = isDifficultyLevel(body.difficulty)
+      ? body.difficulty
+      : DEFAULT_DIFFICULTY;
 
     if (messages.length === 0) {
       return NextResponse.json({ error: "No messages provided" }, { status: 400 });
@@ -222,7 +231,7 @@ export async function POST(request: Request) {
     const client = new GoogleGenerativeAI(apiKey);
     const model = client.getGenerativeModel({
       model: modelName,
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: `${SYSTEM_PROMPT}\n\n${getDifficultySystemInstruction(difficulty)}`,
     });
 
     const contents = messages.map((message) => ({
