@@ -31,7 +31,10 @@ type SpeechRecognitionResultLike = {
 
 type SpeechRecognitionEventLike = {
   resultIndex: number;
-  results: SpeechRecognitionResultLike[];
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
 };
 
 type SpeechRecognitionLike = {
@@ -169,11 +172,23 @@ export default function ChatPage() {
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      const transcript = event.results
-        .slice(event.resultIndex)
-        .map((result) => result[0]?.transcript?.trim() ?? "")
-        .filter((segment) => segment.length > 0)
-        .join(" ");
+      console.log("[speech] onresult fired", {
+        resultIndex: event.resultIndex,
+        resultsLength: event.results.length,
+      });
+
+      const transcriptSegments: string[] = [];
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const segment = event.results[index]?.[0]?.transcript?.trim() ?? "";
+        if (segment.length > 0) {
+          transcriptSegments.push(segment);
+        }
+      }
+
+      const transcript = transcriptSegments.join(" ");
+
+      console.log("[speech] event.results", event.results);
+      console.log("[speech] transcript", transcript);
 
       if (transcript) {
         setInput((currentInput) =>
@@ -186,6 +201,11 @@ export default function ChatPage() {
     };
 
     recognition.onend = () => {
+      console.log("[speech] onend", {
+        isManualStop: isManualStopRef.current,
+        isListening: isListeningRef.current,
+      });
+
       if (isManualStopRef.current || !isListeningRef.current) {
         setIsListening(false);
         return;
@@ -211,6 +231,11 @@ export default function ChatPage() {
     };
 
     recognition.onerror = (event) => {
+      console.error("[speech] onerror", {
+        error: event.error,
+        event,
+      });
+
       if (isManualStopRef.current) {
         return;
       }
