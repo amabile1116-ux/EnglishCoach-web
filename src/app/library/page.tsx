@@ -6,6 +6,7 @@ import {
   addLibrarySentence,
   deleteLibrarySentence,
   getLibrarySentences,
+  getLibraryUpdatedEventName,
   updateLibrarySentence,
   type LibrarySentenceInput,
 } from "../../lib/librarySentences";
@@ -38,10 +39,38 @@ export default function LibraryPage() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [formState, setFormState] = useState<LibrarySentenceInput>(DEFAULT_FORM_STATE);
 
-  useEffect(() => {
+  const refreshFromStorage = () => {
     setSentences(getLibrarySentences());
     const history = getStudyHistory();
     setLearnedSentenceIds(history.learnedSentenceIds);
+  };
+
+  useEffect(() => {
+    refreshFromStorage();
+
+    const handleLibraryUpdated = () => {
+      refreshFromStorage();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshFromStorage();
+      }
+    };
+
+    const handlePageShow = () => {
+      refreshFromStorage();
+    };
+
+    window.addEventListener(getLibraryUpdatedEventName(), handleLibraryUpdated);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener(getLibraryUpdatedEventName(), handleLibraryUpdated);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {

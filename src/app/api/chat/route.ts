@@ -180,6 +180,28 @@ Be positive.
 Be encouraging.
 Sound like a friendly colleague practicing English together—not a teacher giving a lesson.`;
 
+const RESPONSE_FORMAT_PROMPT = `Always respond using this exact structure:
+
+Conversation
+
+[normal English conversation]
+
+💡 Key Phrase
+
+English:
+[one short practical phrase]
+
+Japanese:
+[natural Japanese translation]
+
+Rules:
+- Key Phrase must be exactly one phrase.
+- Keep the phrase short and practical.
+- Prefer expressions useful for overseas business trips.
+- Do not repeat the same phrase unnecessarily.
+- Separate Conversation and Key Phrase with headings.
+- Do not add extra sections, bullets, or commentary outside this structure.`;
+
 const DEFAULT_MODEL_NAME = "gemini-flash-latest";
 
 const getModelName = (): string => {
@@ -231,7 +253,7 @@ export async function POST(request: Request) {
     const client = new GoogleGenerativeAI(apiKey);
     const model = client.getGenerativeModel({
       model: modelName,
-      systemInstruction: `${SYSTEM_PROMPT}\n\n${getDifficultySystemInstruction(difficulty)}`,
+      systemInstruction: `${SYSTEM_PROMPT}\n\n${RESPONSE_FORMAT_PROMPT}\n\n${getDifficultySystemInstruction(difficulty)}`,
     });
 
     const contents = messages.map((message) => ({

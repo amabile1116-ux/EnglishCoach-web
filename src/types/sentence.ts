@@ -5,4 +5,5 @@ export interface Sentence {
   point: string;
   category: string;
   difficulty: "Easy" | "Medium" | "Hard";
+  createdAt?: string;
 }

@@ -7,6 +7,13 @@ import {
   readDifficultyFromStorage,
   type DifficultyLevel,
 } from "../../lib/difficulty";
+import {
+  addLibrarySentence,
+  getLibrarySentences,
+  type LibrarySentenceInput,
+} from "../../lib/librarySentences";
+import { parseChatReply } from "../../lib/chatReply";
+import type { Sentence } from "../../types/sentence";
 
 type MessageRole = "user" | "ai";
 
@@ -25,9 +32,12 @@ const UNSUPPORTED_SPEECH_MESSAGE =
   "This browser does not support speech recognition.";
 const UNSUPPORTED_TTS_MESSAGE = "This browser does not support speech.";
 const SILENCE_TIMEOUT_MS = 10000;
+const SAVE_SUCCESS_MESSAGE = "Phrase saved!";
 
 type SpeechRecognitionResultAlternativeLike = {
   transcript: string;
+  confidence?: number;
+  isFinal?: boolean;
 };
 
 type SpeechRecognitionResultLike = {
@@ -68,22 +78,39 @@ function createMessage(role: MessageRole, content: string): Message {
   };
 }
 
+const toLibraryDifficulty = (difficulty: DifficultyLevel): Sentence["difficulty"] => {
+  if (difficulty === "Beginner") {
+    return "Easy";
+  }
+
+  if (difficulty === "Intermediate") {
+    return "Medium";
+  }
+
+  return "Hard";
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY);
   const [input, setInput] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [librarySentences, setLibrarySentences] = useState<Sentence[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeechSupported, setIsSpeechSupported] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSpeechSynthesisSupported, setIsSpeechSynthesisSupported] = useState(true);
+  const [toastMessage, setToastMessage] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesis | null>(null);
   const isListeningRef = useRef(false);
   const isManualStopRef = useRef(false);
   const silenceTimeoutRef = useRef<number | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+  const speechBufferRef = useRef("");
+  const speechDraftRef = useRef("");
 
   const clearSilenceTimeout = () => {
     if (silenceTimeoutRef.current !== null) {
@@ -123,6 +150,10 @@ export default function ChatPage() {
     } finally {
       setIsLoaded(true);
     }
+  }, []);
+
+  useEffect(() => {
+    setLibrarySentences(getLibrarySentences());
   }, []);
 
   useEffect(() => {
@@ -167,6 +198,14 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current !== null) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const speechWindow = window as WindowWithSpeechRecognition;
     const RecognitionClass =
       speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
@@ -178,66 +217,51 @@ export default function ChatPage() {
 
     const recognition = new RecognitionClass();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      console.log("[speech] onresult fired", {
-        resultIndex: event.resultIndex,
-        resultsLength: event.results.length,
-      });
+      let nextBuffer = speechBufferRef.current;
+      let nextDraft = speechDraftRef.current;
 
-      const transcriptSegments: string[] = [];
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const segment = event.results[index]?.[0]?.transcript?.trim() ?? "";
-        if (segment.length > 0) {
-          transcriptSegments.push(segment);
+        const result = event.results[index];
+        const alternative = result?.[0];
+        const transcript = alternative?.transcript?.trim() ?? "";
+
+        if (transcript.length === 0) {
+          continue;
+        }
+
+        if (alternative?.isFinal) {
+          nextBuffer = nextBuffer.length > 0 ? `${nextBuffer} ${transcript}` : transcript;
+          nextDraft = nextBuffer;
+        } else {
+          nextDraft = nextBuffer.length > 0 ? `${nextBuffer} ${transcript}` : transcript;
         }
       }
 
-      const transcript = transcriptSegments.join(" ");
-
-      console.log("[speech] event.results", event.results);
-      console.log("[speech] transcript", transcript);
-
-      if (transcript) {
-        setInput((currentInput) =>
-          currentInput.trim().length > 0
-            ? `${currentInput.trim()} ${transcript}`
-            : transcript,
-        );
-        scheduleSilenceTimeout();
-      }
+      speechBufferRef.current = nextBuffer;
+      speechDraftRef.current = nextDraft;
+      setInput(nextDraft.trim());
+      scheduleSilenceTimeout();
     };
 
     recognition.onend = () => {
-      console.log("[speech] onend", {
-        isManualStop: isManualStopRef.current,
-        isListening: isListeningRef.current,
-      });
+      const committedText = speechBufferRef.current.trim();
+
+      if (committedText.length > 0) {
+        setInput(committedText);
+      } else if (speechDraftRef.current.trim().length > 0) {
+        setInput(speechDraftRef.current.trim());
+      }
 
       if (isManualStopRef.current || !isListeningRef.current) {
         setIsListening(false);
         return;
       }
 
-      try {
-        recognition.start();
-        scheduleSilenceTimeout();
-      } catch (error) {
-        console.error("[speech] Failed to restart recognition", error);
-        setTimeout(() => {
-          if (!isManualStopRef.current && recognitionRef.current) {
-            try {
-              recognitionRef.current.start();
-              scheduleSilenceTimeout();
-            } catch (retryError) {
-              console.error("[speech] Retry start failed", retryError);
-              setIsListening(false);
-            }
-          }
-        }, 250);
-      }
+      setIsListening(false);
     };
 
     recognition.onerror = (event) => {
@@ -371,7 +395,63 @@ export default function ChatPage() {
   };
 
   const handleReplayMessage = (content: string) => {
-    speakEnglishOnly(content);
+    const parsedReply = parseChatReply(content);
+    speakEnglishOnly(parsedReply.conversation || content);
+  };
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastMessage("");
+      toastTimeoutRef.current = null;
+    }, 2400);
+  };
+
+  const handleSavePhrase = (message: Message) => {
+    if (message.role !== "ai" || message.content === ERROR_MESSAGE) {
+      return;
+    }
+
+    const parsedReply = parseChatReply(message.content);
+    const english = parsedReply.keyPhraseEnglish.trim();
+    const japanese = parsedReply.keyPhraseJapanese.trim();
+
+    if (english.length === 0 || japanese.length === 0) {
+      return;
+    }
+
+    const normalizedEnglish = english.trim().toLowerCase();
+    const alreadySaved = librarySentences.some(
+      (sentence) => sentence.english.trim().toLowerCase() === normalizedEnglish,
+    );
+
+    if (alreadySaved) {
+      showToast("Already saved");
+      return;
+    }
+
+    const inputForLibrary: LibrarySentenceInput = {
+      english,
+      japanese,
+      category: "Chat",
+      difficulty: toLibraryDifficulty(difficulty),
+    };
+
+    const previousCount = librarySentences.length;
+    const nextSentences = addLibrarySentence(inputForLibrary);
+    setLibrarySentences(nextSentences);
+
+    if (nextSentences.length === previousCount) {
+      showToast("Already saved");
+      return;
+    }
+
+    showToast(SAVE_SUCCESS_MESSAGE);
   };
 
   const handleStartListening = () => {
@@ -386,6 +466,8 @@ export default function ChatPage() {
 
     try {
       isManualStopRef.current = false;
+      speechBufferRef.current = "";
+      speechDraftRef.current = "";
       setIsListening(true);
       recognitionRef.current.start();
       scheduleSilenceTimeout();
@@ -441,6 +523,17 @@ export default function ChatPage() {
             {messages.map((message) => {
               const isUserMessage = message.role === "user";
               const isAiMessage = message.role === "ai";
+              const parsedReply = isAiMessage ? parseChatReply(message.content) : null;
+              const keyPhraseEnglish = parsedReply?.keyPhraseEnglish.trim() ?? "";
+              const keyPhraseJapanese = parsedReply?.keyPhraseJapanese.trim() ?? "";
+              const conversation = parsedReply?.conversation.trim() ?? "";
+              const hasKeyPhrase = keyPhraseEnglish.length > 0 && keyPhraseJapanese.length > 0;
+              const isSaved = hasKeyPhrase
+                ? librarySentences.some(
+                    (sentence) =>
+                      sentence.english.trim().toLowerCase() === keyPhraseEnglish.toLowerCase(),
+                  )
+                : false;
 
               return (
                 <div
@@ -458,20 +551,82 @@ export default function ChatPage() {
                       <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${isUserMessage ? "text-emerald-100" : "text-slate-400"}`}>
                         {isUserMessage ? "You" : "AI"}
                       </p>
-                      {isAiMessage ? (
-                        <button
-                          type="button"
-                          onClick={() => handleReplayMessage(message.content)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
-                          aria-label="Replay AI message"
-                        >
-                          <Speaker className="h-4 w-4" />
-                        </button>
-                      ) : null}
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
-                      {isUserMessage ? message.content : `"${message.content}"`}
-                    </p>
+                    {isUserMessage ? (
+                      <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <div className="mt-3 space-y-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            Conversation
+                          </p>
+                          <div className="mt-2 whitespace-pre-wrap text-[15px] leading-7">
+                            {conversation || message.content}
+                          </div>
+                        </div>
+
+                        {hasKeyPhrase ? (
+                          <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-4 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                💡 Key Phrase
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSavePhrase(message)}
+                                  disabled={isSaved || message.content === ERROR_MESSAGE}
+                                  className="inline-flex h-8 items-center justify-center rounded-full border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                  {isSaved ? "Already saved" : "⭐ Save Phrase"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReplayMessage(message.content)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
+                                  aria-label="Replay AI conversation"
+                                >
+                                  <Speaker className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 space-y-4 rounded-[1.25rem] bg-white px-4 py-4 shadow-sm">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  English:
+                                </p>
+                                <p className="mt-2 text-[15px] leading-7 text-slate-900">
+                                  {keyPhraseEnglish}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  Japanese:
+                                </p>
+                                <p className="mt-2 text-[15px] leading-7 text-slate-700">
+                                  {keyPhraseJapanese}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : isAiMessage ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleReplayMessage(message.content)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100"
+                              aria-label="Replay AI message"
+                            >
+                              <Speaker className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -563,6 +718,12 @@ export default function ChatPage() {
           ) : null}
         </form>
       </section>
+
+      {toastMessage ? (
+        <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900/95 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+          {toastMessage}
+        </div>
+      ) : null}
     </main>
   );
 }

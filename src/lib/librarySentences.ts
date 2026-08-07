@@ -2,6 +2,7 @@ import { sampleSentences } from "../data/sampleSentences";
 import type { Sentence } from "../types/sentence";
 
 const STORAGE_KEY = "english-coach-library-sentences";
+const LIBRARY_UPDATED_EVENT = "english-coach-library-updated";
 
 const difficultyValues = ["Easy", "Medium", "Hard"] as const;
 
@@ -20,6 +21,10 @@ const isDifficulty = (value: unknown): value is Sentence["difficulty"] => {
   return typeof value === "string" && (difficultyValues as readonly string[]).includes(value);
 };
 
+const normalizeEnglish = (value: string): string => {
+  return value.trim().toLowerCase();
+};
+
 const sanitizeSentence = (value: unknown): Sentence | null => {
   if (!isPlainObject(value)) {
     return null;
@@ -31,6 +36,7 @@ const sanitizeSentence = (value: unknown): Sentence | null => {
   const point = typeof value.point === "string" ? value.point.trim() : "";
   const category = typeof value.category === "string" ? value.category.trim() : "";
   const difficulty = isDifficulty(value.difficulty) ? value.difficulty : null;
+  const createdAt = typeof value.createdAt === "string" ? value.createdAt.trim() : "";
 
   if (!id || japanese.length === 0 || english.length === 0 || category.length === 0 || !difficulty) {
     return null;
@@ -43,6 +49,7 @@ const sanitizeSentence = (value: unknown): Sentence | null => {
     point,
     category,
     difficulty,
+    createdAt: createdAt.length > 0 ? createdAt : undefined,
   };
 };
 
@@ -108,6 +115,7 @@ const persistSentences = (sentences: Sentence[]): Sentence[] => {
 
   if (typeof window !== "undefined") {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    window.dispatchEvent(new CustomEvent(LIBRARY_UPDATED_EVENT));
   }
 
   return sanitized;
@@ -117,8 +125,22 @@ export const getLibrarySentences = (): Sentence[] => {
   return readStoredSentences();
 };
 
+export const getLibraryStorageKey = (): string => {
+  return STORAGE_KEY;
+};
+
+export const getLibraryUpdatedEventName = (): string => {
+  return LIBRARY_UPDATED_EVENT;
+};
+
 export const addLibrarySentence = (input: LibrarySentenceInput): Sentence[] => {
   const current = readStoredSentences();
+  const normalizedInputEnglish = normalizeEnglish(input.english);
+
+  if (current.some((sentence) => normalizeEnglish(sentence.english) === normalizedInputEnglish)) {
+    return current;
+  }
+
   const nextSentence: Sentence = {
     id: getNextSentenceId(current),
     japanese: input.japanese.trim(),
@@ -126,6 +148,7 @@ export const addLibrarySentence = (input: LibrarySentenceInput): Sentence[] => {
     point: "",
     category: input.category.trim(),
     difficulty: input.difficulty,
+    createdAt: new Date().toISOString(),
   };
 
   return persistSentences([...current, nextSentence]);
@@ -133,6 +156,17 @@ export const addLibrarySentence = (input: LibrarySentenceInput): Sentence[] => {
 
 export const updateLibrarySentence = (sentenceId: number, input: LibrarySentenceInput): Sentence[] => {
   const current = readStoredSentences();
+  const normalizedInputEnglish = normalizeEnglish(input.english);
+
+  if (
+    current.some(
+      (sentence) =>
+        sentence.id !== sentenceId &&
+        normalizeEnglish(sentence.english) === normalizedInputEnglish,
+    )
+  ) {
+    return current;
+  }
 
   return persistSentences(
     current.map((sentence) => {

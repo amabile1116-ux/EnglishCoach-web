@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { sampleSentences } from "../../data/sampleSentences";
 import { getLibrarySentences } from "../../lib/librarySentences";
 import { recordReviewAction } from "../../lib/studyHistory";
 import type { Sentence } from "../../types/sentence";
 
 export default function ReviewPage() {
-  const [reviewItems, setReviewItems] = useState<Sentence[]>(sampleSentences);
+  const [reviewItems, setReviewItems] = useState<Sentence[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -17,7 +16,7 @@ export default function ReviewPage() {
   const speechRequestIdRef = useRef(0);
 
   useEffect(() => {
-    const nextItems = getLibrarySentences();
+    const nextItems = getLibrarySentences().filter((sentence) => sentence.category === "Chat");
     setReviewItems(nextItems);
     setCurrentIndex(0);
     setShowAnswer(false);
