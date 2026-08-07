@@ -190,6 +190,7 @@ export default function ChatPage() {
   const restartTimeoutRef = useRef<number | null>(null);
   // Tracks whether recognition.start() has been called and onend has not yet fired.
   const isRecognizingRef = useRef(false);
+  const ignoreSpeechUpdatesRef = useRef(false);
 
   const clearSilenceTimeout = () => {
     if (silenceTimeoutRef.current !== null) {
@@ -217,6 +218,13 @@ export default function ChatPage() {
       isManualStopRef.current = true;
       recognitionRef.current?.stop();
     }, SILENCE_TIMEOUT_MS);
+  };
+
+  const resetSpeechState = () => {
+    speechBufferRef.current = "";
+    speechDraftRef.current = "";
+    clearSilenceTimeout();
+    clearRestartTimeout();
   };
 
   useEffect(() => {
@@ -308,6 +316,10 @@ export default function ChatPage() {
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
+      if (ignoreSpeechUpdatesRef.current) {
+        return;
+      }
+
       let nextBuffer = speechBufferRef.current;
       let nextDraft = speechDraftRef.current;
       let sawFinalResult = false;
@@ -345,6 +357,12 @@ export default function ChatPage() {
       clearRestartTimeout();
 
       if (isManualStopRef.current || !isListeningRef.current) {
+        if (ignoreSpeechUpdatesRef.current) {
+          speechDraftRef.current = "";
+          setIsListening(false);
+          return;
+        }
+
         // Intentional end (user OFF or silence timeout) — commit final text.
         const finalText = speechBufferRef.current.trim() || speechDraftRef.current.trim();
         if (finalText.length > 0) {
@@ -406,6 +424,15 @@ export default function ChatPage() {
     const trimmedInput = input.trim();
     if (!trimmedInput || isSending) {
       return;
+    }
+
+    ignoreSpeechUpdatesRef.current = true;
+    isManualStopRef.current = true;
+    setIsListening(false);
+    resetSpeechState();
+
+    if (isRecognizingRef.current) {
+      recognitionRef.current?.stop();
     }
 
     const userMessage = createMessage("user", trimmedInput);
@@ -577,11 +604,12 @@ export default function ChatPage() {
     }
 
     try {
+      ignoreSpeechUpdatesRef.current = false;
       isManualStopRef.current = false;
       // Seed buffer from existing input so new speech appends rather than replaces.
       const existingInput = input.trim();
       speechBufferRef.current = existingInput;
-      speechDraftRef.current = existingInput;
+      speechDraftRef.current = "";
       setIsListening(true);
       isRecognizingRef.current = true;
       recognitionRef.current.start();
