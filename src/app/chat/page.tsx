@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Send, Trash2 } from "lucide-react";
+import { Mic, Send, Trash2 } from "lucide-react";
 
 type MessageRole = "user" | "ai";
 
@@ -15,6 +15,39 @@ const STORAGE_KEY = "englishcoach-chat-history-v1";
 const DEFAULT_TOPIC = "Introducing yourself";
 const ERROR_MESSAGE = "Sorry, something went wrong.";
 const THINKING_MESSAGE = "Thinking...";
+const UNSUPPORTED_SPEECH_MESSAGE =
+  "This browser does not support speech recognition.";
+
+type SpeechRecognitionResultAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  0: SpeechRecognitionResultAlternativeLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: SpeechRecognitionResultLike[];
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type WindowWithSpeechRecognition = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 function createMessage(role: MessageRole, content: string): Message {
   return {
@@ -29,7 +62,10 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
     try {
@@ -64,6 +100,47 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  useEffect(() => {
+    const speechWindow = window as WindowWithSpeechRecognition;
+    const RecognitionClass =
+      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+
+    if (!RecognitionClass) {
+      setIsSpeechSupported(false);
+      return;
+    }
+
+    const recognition = new RecognitionClass();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[event.resultIndex]?.[0]?.transcript?.trim();
+
+      if (transcript) {
+        setInput(transcript);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = (event) => {
+      console.error("[speech] Recognition failed", event.error ?? event);
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsSpeechSupported(true);
+
+    return () => {
+      recognition.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -95,18 +172,7 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
-        let errorMessage = "Failed to fetch AI response";
-
-        try {
-          const errorData = (await response.json()) as { error?: string };
-          if (typeof errorData.error === "string" && errorData.error.trim()) {
-            errorMessage = errorData.error;
-          }
-        } catch {
-          // Fall back to a generic message when response body is not JSON.
-        }
-
-        throw new Error(errorMessage);
+        throw new Error("Failed to fetch AI response");
       }
 
       const data = (await response.json()) as { reply?: string };
@@ -120,9 +186,7 @@ export default function ChatPage() {
         ...currentMessages,
         createMessage("ai", reply),
       ]);
-    } catch (error) {
-      console.error("[chat] Failed to get AI response", error);
-
+    } catch {
       setMessages((currentMessages) => [
         ...currentMessages,
         createMessage("ai", ERROR_MESSAGE),
@@ -141,6 +205,25 @@ export default function ChatPage() {
 
     setMessages([]);
     window.localStorage.removeItem(STORAGE_KEY);
+  };
+
+  const handleStartListening = () => {
+    if (!isSpeechSupported || isListening || isSending) {
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      setIsSpeechSupported(false);
+      return;
+    }
+
+    try {
+      setIsListening(true);
+      recognitionRef.current.start();
+    } catch (error) {
+      setIsListening(false);
+      console.error("[speech] Failed to start recognition", error);
+    }
   };
 
   return (
@@ -239,6 +322,19 @@ export default function ChatPage() {
               className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none"
             />
             <button
+              type="button"
+              onClick={handleStartListening}
+              disabled={!isSpeechSupported || isSending || isListening}
+              className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-white transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-300 ${
+                isListening
+                  ? "animate-pulse border-emerald-600 bg-emerald-600"
+                  : "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
+              }`}
+              aria-label="Start voice input"
+            >
+              <Mic className="h-5 w-5" />
+            </button>
+            <button
               type="submit"
               disabled={!input.trim() || isSending}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -247,6 +343,14 @@ export default function ChatPage() {
               Send
             </button>
           </div>
+
+          {isListening ? (
+            <p className="mt-2 text-sm font-medium text-emerald-700">🎤 Listening...</p>
+          ) : null}
+
+          {!isSpeechSupported ? (
+            <p className="mt-2 text-sm text-rose-600">{UNSUPPORTED_SPEECH_MESSAGE}</p>
+          ) : null}
         </form>
       </section>
     </main>
