@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Mic, Send, Speaker, Trash2 } from "lucide-react";
+import { Mic, Send, Speaker, Square, Trash2 } from "lucide-react";
 
 type MessageRole = "user" | "ai";
 
@@ -19,6 +19,7 @@ const SPEAKING_MESSAGE = "🔊 Speaking...";
 const UNSUPPORTED_SPEECH_MESSAGE =
   "This browser does not support speech recognition.";
 const UNSUPPORTED_TTS_MESSAGE = "This browser does not support speech.";
+const SILENCE_TIMEOUT_MS = 10000;
 
 type SpeechRecognitionResultAlternativeLike = {
   transcript: string;
@@ -71,6 +72,29 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesis | null>(null);
+  const isListeningRef = useRef(false);
+  const isManualStopRef = useRef(false);
+  const silenceTimeoutRef = useRef<number | null>(null);
+
+  const clearSilenceTimeout = () => {
+    if (silenceTimeoutRef.current !== null) {
+      window.clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleSilenceTimeout = () => {
+    clearSilenceTimeout();
+
+    silenceTimeoutRef.current = window.setTimeout(() => {
+      if (!isListeningRef.current || isManualStopRef.current) {
+        return;
+      }
+
+      // Recycle recognition after long silence to keep listening stable on mobile browsers.
+      recognitionRef.current?.stop();
+    }, SILENCE_TIMEOUT_MS);
+  };
 
   useEffect(() => {
     try {
@@ -106,6 +130,10 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -136,31 +164,66 @@ export default function ChatPage() {
     }
 
     const recognition = new RecognitionClass();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      const transcript = event.results[event.resultIndex]?.[0]?.transcript?.trim();
+      const transcript = event.results
+        .slice(event.resultIndex)
+        .map((result) => result[0]?.transcript?.trim() ?? "")
+        .filter((segment) => segment.length > 0)
+        .join(" ");
 
       if (transcript) {
-        setInput(transcript);
+        setInput((currentInput) =>
+          currentInput.trim().length > 0
+            ? `${currentInput.trim()} ${transcript}`
+            : transcript,
+        );
+        scheduleSilenceTimeout();
       }
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      if (isManualStopRef.current || !isListeningRef.current) {
+        setIsListening(false);
+        return;
+      }
+
+      try {
+        recognition.start();
+        scheduleSilenceTimeout();
+      } catch (error) {
+        console.error("[speech] Failed to restart recognition", error);
+        setTimeout(() => {
+          if (!isManualStopRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+              scheduleSilenceTimeout();
+            } catch (retryError) {
+              console.error("[speech] Retry start failed", retryError);
+              setIsListening(false);
+            }
+          }
+        }, 250);
+      }
     };
 
     recognition.onerror = (event) => {
+      if (isManualStopRef.current) {
+        return;
+      }
+
       console.error("[speech] Recognition failed", event.error ?? event);
-      setIsListening(false);
     };
 
     recognitionRef.current = recognition;
     setIsSpeechSupported(true);
 
     return () => {
+      isManualStopRef.current = true;
+      clearSilenceTimeout();
       recognition.stop();
       recognitionRef.current = null;
     };
@@ -286,12 +349,21 @@ export default function ChatPage() {
     }
 
     try {
+      isManualStopRef.current = false;
       setIsListening(true);
       recognitionRef.current.start();
+      scheduleSilenceTimeout();
     } catch (error) {
       setIsListening(false);
       console.error("[speech] Failed to start recognition", error);
     }
+  };
+
+  const handleStopListening = () => {
+    isManualStopRef.current = true;
+    setIsListening(false);
+    clearSilenceTimeout();
+    recognitionRef.current?.stop();
   };
 
   return (
@@ -417,16 +489,20 @@ export default function ChatPage() {
             />
             <button
               type="button"
-              onClick={handleStartListening}
-              disabled={!isSpeechSupported || isSending || isListening}
+              onClick={isListening ? handleStopListening : handleStartListening}
+              disabled={!isSpeechSupported || isSending}
               className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-white transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-300 ${
                 isListening
                   ? "animate-pulse border-emerald-600 bg-emerald-600"
                   : "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
               }`}
-              aria-label="Start voice input"
+              aria-label={isListening ? "Stop voice input" : "Start voice input"}
             >
-              <Mic className="h-5 w-5" />
+              {isListening ? (
+                <Square className="h-5 w-5" />
+              ) : (
+                <Mic className="h-5 w-5" />
+              )}
             </button>
             <button
               type="submit"
