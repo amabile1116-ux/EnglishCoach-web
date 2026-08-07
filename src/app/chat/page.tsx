@@ -37,11 +37,11 @@ const SAVE_SUCCESS_MESSAGE = "Phrase saved!";
 type SpeechRecognitionResultAlternativeLike = {
   transcript: string;
   confidence?: number;
-  isFinal?: boolean;
 };
 
 type SpeechRecognitionResultLike = {
   0: SpeechRecognitionResultAlternativeLike;
+  isFinal: boolean;
 };
 
 type SpeechRecognitionEventLike = {
@@ -78,6 +78,82 @@ function createMessage(role: MessageRole, content: string): Message {
   };
 }
 
+const normalizeSpeechText = (value: string): string => {
+  return value.trim().replace(/\s+/g, " ");
+};
+
+const mergeSpeechText = (baseText: string, nextText: string): string => {
+  const normalizedBase = normalizeSpeechText(baseText);
+  const normalizedNext = normalizeSpeechText(nextText);
+
+  if (!normalizedBase) {
+    return normalizedNext;
+  }
+
+  if (!normalizedNext) {
+    return normalizedBase;
+  }
+
+  const baseWords = normalizedBase.split(" ");
+  const nextWords = normalizedNext.split(" ");
+  const maxOverlap = Math.min(baseWords.length, nextWords.length);
+
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    const baseTail = baseWords.slice(baseWords.length - overlap).join(" ");
+    const nextHead = nextWords.slice(0, overlap).join(" ");
+
+    if (baseTail === nextHead) {
+      const remainder = nextWords.slice(overlap).join(" ");
+      return remainder.length > 0 ? `${normalizedBase} ${remainder}` : normalizedBase;
+    }
+  }
+
+  return `${normalizedBase} ${normalizedNext}`;
+};
+
+const combineSpeechText = (finalizedText: string, interimText: string): string => {
+  const normalizedFinalized = normalizeSpeechText(finalizedText);
+  const normalizedInterim = normalizeSpeechText(interimText);
+
+  if (!normalizedFinalized) {
+    return normalizedInterim;
+  }
+
+  if (!normalizedInterim) {
+    return normalizedFinalized;
+  }
+
+  return `${normalizedFinalized} ${normalizedInterim}`;
+};
+
+const trimInterimAgainstFinalized = (finalizedText: string, interimText: string): string => {
+  const normalizedFinalized = normalizeSpeechText(finalizedText);
+  const normalizedInterim = normalizeSpeechText(interimText);
+
+  if (!normalizedInterim) {
+    return "";
+  }
+
+  if (!normalizedFinalized) {
+    return normalizedInterim;
+  }
+
+  const finalizedWords = normalizedFinalized.split(" ");
+  const interimWords = normalizedInterim.split(" ");
+  const maxOverlap = Math.min(finalizedWords.length, interimWords.length);
+
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    const finalizedTail = finalizedWords.slice(finalizedWords.length - overlap).join(" ");
+    const interimHead = interimWords.slice(0, overlap).join(" ");
+
+    if (finalizedTail === interimHead) {
+      return interimWords.slice(overlap).join(" ");
+    }
+  }
+
+  return normalizedInterim;
+};
+
 const toLibraryDifficulty = (difficulty: DifficultyLevel): Sentence["difficulty"] => {
   if (difficulty === "Beginner") {
     return "Easy";
@@ -111,11 +187,21 @@ export default function ChatPage() {
   const toastTimeoutRef = useRef<number | null>(null);
   const speechBufferRef = useRef("");
   const speechDraftRef = useRef("");
+  const restartTimeoutRef = useRef<number | null>(null);
+  // Tracks whether recognition.start() has been called and onend has not yet fired.
+  const isRecognizingRef = useRef(false);
 
   const clearSilenceTimeout = () => {
     if (silenceTimeoutRef.current !== null) {
       window.clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
+    }
+  };
+
+  const clearRestartTimeout = () => {
+    if (restartTimeoutRef.current !== null) {
+      window.clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
     }
   };
 
@@ -127,7 +213,8 @@ export default function ChatPage() {
         return;
       }
 
-      // Recycle recognition after long silence to keep listening stable on mobile browsers.
+      // Silence treated as intentional end — no auto-restart after this stop.
+      isManualStopRef.current = true;
       recognitionRef.current?.stop();
     }, SILENCE_TIMEOUT_MS);
   };
@@ -223,45 +310,66 @@ export default function ChatPage() {
     recognition.onresult = (event) => {
       let nextBuffer = speechBufferRef.current;
       let nextDraft = speechDraftRef.current;
+      let sawFinalResult = false;
 
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
         const alternative = result?.[0];
-        const transcript = alternative?.transcript?.trim() ?? "";
+        const transcript = normalizeSpeechText(alternative?.transcript ?? "");
 
         if (transcript.length === 0) {
           continue;
         }
 
-        if (alternative?.isFinal) {
-          nextBuffer = nextBuffer.length > 0 ? `${nextBuffer} ${transcript}` : transcript;
-          nextDraft = nextBuffer;
+        if (result.isFinal) {
+          nextBuffer = mergeSpeechText(nextBuffer, transcript);
+          nextDraft = "";
+          sawFinalResult = true;
         } else {
-          nextDraft = nextBuffer.length > 0 ? `${nextBuffer} ${transcript}` : transcript;
+          nextDraft = trimInterimAgainstFinalized(nextBuffer, transcript);
         }
+      }
+
+      if (sawFinalResult && nextDraft.length > 0) {
+        nextDraft = trimInterimAgainstFinalized(nextBuffer, nextDraft);
       }
 
       speechBufferRef.current = nextBuffer;
       speechDraftRef.current = nextDraft;
-      setInput(nextDraft.trim());
+      setInput(combineSpeechText(nextBuffer, nextDraft));
       scheduleSilenceTimeout();
     };
 
     recognition.onend = () => {
-      const committedText = speechBufferRef.current.trim();
-
-      if (committedText.length > 0) {
-        setInput(committedText);
-      } else if (speechDraftRef.current.trim().length > 0) {
-        setInput(speechDraftRef.current.trim());
-      }
+      isRecognizingRef.current = false;
+      clearRestartTimeout();
 
       if (isManualStopRef.current || !isListeningRef.current) {
+        // Intentional end (user OFF or silence timeout) — commit final text.
+        const finalText = speechBufferRef.current.trim() || speechDraftRef.current.trim();
+        if (finalText.length > 0) {
+          setInput(finalText);
+        }
+        speechDraftRef.current = "";
         setIsListening(false);
         return;
       }
 
-      setIsListening(false);
+      // Browser-initiated end — restart silently to maintain Listening session.
+      restartTimeoutRef.current = window.setTimeout(() => {
+        restartTimeoutRef.current = null;
+        if (isManualStopRef.current || !isListeningRef.current || isRecognizingRef.current) {
+          return;
+        }
+        try {
+          isRecognizingRef.current = true;
+          recognitionRef.current?.start();
+        } catch {
+          isRecognizingRef.current = false;
+          isManualStopRef.current = true;
+          setIsListening(false);
+        }
+      }, 150);
     };
 
     recognition.onerror = (event) => {
@@ -283,7 +391,11 @@ export default function ChatPage() {
     return () => {
       isManualStopRef.current = true;
       clearSilenceTimeout();
-      recognition.stop();
+      clearRestartTimeout();
+      if (isRecognizingRef.current) {
+        recognition.stop();
+      }
+      isRecognizingRef.current = false;
       recognitionRef.current = null;
     };
   }, []);
@@ -455,7 +567,7 @@ export default function ChatPage() {
   };
 
   const handleStartListening = () => {
-    if (!isSpeechSupported || isListening || isSending) {
+    if (!isSpeechSupported || isListening || isSending || isRecognizingRef.current) {
       return;
     }
 
@@ -466,13 +578,17 @@ export default function ChatPage() {
 
     try {
       isManualStopRef.current = false;
-      speechBufferRef.current = "";
-      speechDraftRef.current = "";
+      // Seed buffer from existing input so new speech appends rather than replaces.
+      const existingInput = input.trim();
+      speechBufferRef.current = existingInput;
+      speechDraftRef.current = existingInput;
       setIsListening(true);
+      isRecognizingRef.current = true;
       recognitionRef.current.start();
       scheduleSilenceTimeout();
     } catch (error) {
       setIsListening(false);
+      isRecognizingRef.current = false;
       console.error("[speech] Failed to start recognition", error);
     }
   };
@@ -481,6 +597,7 @@ export default function ChatPage() {
     isManualStopRef.current = true;
     setIsListening(false);
     clearSilenceTimeout();
+    clearRestartTimeout();
     recognitionRef.current?.stop();
   };
 
